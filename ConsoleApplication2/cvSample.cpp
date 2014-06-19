@@ -50,14 +50,6 @@ static void onMouse(int event, int x, int y, int, void*)
 		cvResetImageROI(frame);
 		cvDestroyWindow("Tracking Image");
 		cvShowImage("Tracking Image", tracking);
-
-		//if sel[2] > sel[0] and sel[3] > sel[1]:
-		//patch = gray[sel[1]:sel[3], sel[0] : sel[2]]
-			//result = cv.matchTemplate(gray, patch, cv.TM_CCOEFF_NORMED)
-			//result = np.abs(result)**3
-			//val, result = cv.threshold(result, 0.01, 0, cv.THRESH_TOZERO)
-			//result8 = cv.normalize(result, None, 0, 255, cv.NORM_MINMAX, cv.CV_8U)
-			//cv.imshow("result", result8)
 		rectangle_on = true;
 		drag_start = false;
 	}
@@ -139,8 +131,16 @@ int _tmain(int argc, const char** argv)
 		//cvWriteFrame(writer, frame);
 
 		//cv::cvtColor(frame, gray, COLOR_BGR2GRAY);
-		if (rectangle_on)
-			cvRectangle(frame, cvPoint(minPosX, minPosY), cvPoint(maxPosX, maxPosY), CV_RGB(255, 0, 0), 1, 8, 0);
+		if (rectangle_on) {
+			IplImage *result = cvCreateImage(cvSize(cvGetSize(frame).width - cvGetSize(tracking).width + 1, cvGetSize(frame).height - cvGetSize(tracking).height + 1), 32, 1);
+			cvMatchTemplate(frame, tracking, result, CV_TM_SQDIFF);
+
+			double minVal, maxVal;
+			CvPoint minLoc, maxLoc;
+			cvMinMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, 0);
+			cvRectangle(frame, minLoc, maxLoc, CV_RGB(255, 0, 0), 1, 8, 0);
+		}
+			
 		cvShowImage("Webcam", frame);
 		//printf("%d\n", i);
 
