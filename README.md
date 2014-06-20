@@ -1,6 +1,4 @@
 #OpenCV CameraConsole Application for VS2013
-======
-
 It is simple vs2013 console application for OpenCV camera related feature implement.
 
 #Feature
