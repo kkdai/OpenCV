@@ -1,5 +1,8 @@
 // ConsoleApplication2.cpp : Defines the entry point for the console application.
-//
+/*
+*  You need install latest OpenCV binary in C:\opencv
+*  Download it from http://sourceforge.net/projects/opencvlibrary/files/opencv-win/
+*/
 
 #include "stdafx.h"
 #include <opencv2\objdetect\objdetect.hpp>
@@ -13,13 +16,13 @@
 using namespace std;
 using namespace cv;
 
+static int  color_flag = 0; //0: RGB, 1: Grey
+static int  rotation_flag = 0; //1: 90, 2: 180, 3:270
+
 static bool drag_start = false;
 static bool rectangle_on = false;
 static int  Pos_x = 0;
 static int  Pos_y = 0;
-
-static int  Sel_x = 0;
-static int  Sel_y = 0;
 
 IplImage *frame = NULL;
 IplImage *gray = NULL;
@@ -50,8 +53,9 @@ static void onMouse(int event, int x, int y, int, void*)
 		cvResetImageROI(frame);
 		cvDestroyWindow("Tracking Image");
 		cvShowImage("Tracking Image", tracking);
-		rectangle_on = true;
 		drag_start = false;
+		if (minPosX != 0)
+			rectangle_on = true;
 	}
 	else if (drag_start) { //Drag start
 		minPosX = min(Pos_x, x);
@@ -128,19 +132,41 @@ int _tmain(int argc, const char** argv)
 	while (true)
 	{
 		frame = cvQueryFrame(capture);
-		//cvWriteFrame(writer, frame);
+		cv::Mat ref, gref;
+		if (color_flag) {
+			ref = cv::Mat(frame, 0);
+			cv::cvtColor(ref, gref, CV_BGR2GRAY);
+			frame = &IplImage(gref);
+		}
 
+		//cvWriteFrame(writer, frame);
 		//cv::cvtColor(frame, gray, COLOR_BGR2GRAY);
+		
 		if (rectangle_on) {
+			if (color_flag) {
+				cv::Mat gtp1(tracking, 0);
+				cv::Mat res(ref.rows - gtp1.rows + 1, ref.cols - gtp1.cols + 1, CV_32FC1);
+				cv::threshold(res, res, 0.8, 1., CV_THRESH_TOZERO);
+			}
+
 			IplImage *result = cvCreateImage(cvSize(cvGetSize(frame).width - cvGetSize(tracking).width + 1, cvGetSize(frame).height - cvGetSize(tracking).height + 1), 32, 1);
 			cvMatchTemplate(frame, tracking, result, CV_TM_SQDIFF);
 
 			double minVal, maxVal;
 			CvPoint minLoc, maxLoc;
 			cvMinMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, 0);
+			printf("patter maching min=%lf, max=%lf \n", minVal, maxVal);
 			cvRectangle(frame, minLoc, maxLoc, CV_RGB(255, 0, 0), 1, 8, 0);
 		}
 			
+		//rotation
+		if (rotation_flag == 1) 
+			frame = rotate_image(frame, 1); //90
+		else if (rotation_flag == 2)
+			frame = rotate_image(frame, 2); //180
+		else if (rotation_flag == 3)
+			frame = rotate_image(frame, 3); //270
+
 		cvShowImage("Webcam", frame);
 		//printf("%d\n", i);
 
@@ -153,23 +179,25 @@ int _tmain(int argc, const char** argv)
 		switch(inKey)
 		{
 		//transpose 90 degree
+		case 'g':
+		case 'G':
+			color_flag = !color_flag;
+			break;
 		case 't':
 		case 'T':
-			frame = rotate_image(frame, 1);
-			cvNamedWindow("transpose90", 1);
-			cvShowImage("transpose90", frame);
+			rotation_flag = 1; //90
 			break;
 		case 'f':
 		case 'F':
-			frame = rotate_image(frame, 2);
-			cvNamedWindow("transpose180", 1);
-			cvShowImage("transpose180", frame);
+			rotation_flag = 2; //180
 			break;
 		case 'r':
 		case 'R':
-			frame = rotate_image(frame, 3);
-			cvNamedWindow("transpose270", 1);
-			cvShowImage("transpose270", frame);
+			rotation_flag = 3; //270
+			break;
+		case 'n':
+		case 'N':
+			rotation_flag = 0;
 			break;
 
 		default:
