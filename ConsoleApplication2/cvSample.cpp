@@ -22,6 +22,8 @@ static int  rotation_flag = 0; //1: 90, 2: 180, 3:270
 
 static bool drag_start = false;
 static bool rectangle_on = false;
+static bool verbose = false;
+static bool barcodeEnable = false;
 static int  Pos_x = 0;
 static int  Pos_y = 0;
 
@@ -46,9 +48,11 @@ static void onMouse(int event, int x, int y, int, void*)
 	else if (event == EVENT_LBUTTONUP)  {
 		//Show new image
 		cvSetImageROI(frame, cvRect(minPosX, minPosY, maxPosX - minPosX, maxPosY - minPosY));
-		printf("x=%d,y=%d,width=%d,height=%d \n", minPosX, minPosY, maxPosX - minPosX, maxPosY - minPosY);
+		if (verbose)
+			printf("x=%d,y=%d,width=%d,height=%d \n", minPosX, minPosY, maxPosX - minPosX, maxPosY - minPosY);
 		CvSize cvs = cvGetSize(frame);
-		printf("size width=%d, height=%d \n", cvs.width, cvs.height);
+		if (verbose)
+			printf("size width=%d, height=%d \n", cvs.width, cvs.height);
 		tracking = cvCreateImage(cvGetSize(frame), frame->depth, frame->nChannels);
 		cvCopy(frame, tracking, NULL);
 		cvResetImageROI(frame);
@@ -67,10 +71,12 @@ static void onMouse(int event, int x, int y, int, void*)
 		cvShowImage("Webcam", frame);
 	}
 	else {
-		//printf("selection is complete");
+		if (verbose)
+			printf("selection is complete");
 		drag_start = false;
 	}
 }
+
 
 IplImage* transposeImage(IplImage* image) {
 
@@ -88,6 +94,59 @@ IplImage* transposeImage(IplImage* image) {
 	cvReleaseMat(&mapMatrix);
 
 	return rotated;
+}
+
+void detect_barcode(IplImage* imgco)
+{
+	IplImage* img = cvCreateImage(cvGetSize(imgco), 8, 1);
+	IplImage* imgx = cvCreateImage(cvGetSize(img), IPL_DEPTH_16S, 1);
+	IplImage* imgy = cvCreateImage(cvGetSize(img), IPL_DEPTH_16S, 1);
+	IplImage* thresh = cvCreateImage(cvGetSize(img), 8, 1);
+
+	//### Convert image to grayscale ###
+	cvCvtColor(imgco, img, CV_BGR2GRAY);
+
+	//### Finding horizontal and vertical gradient ###
+	cvSobel(img, imgx, 1, 0, 3);
+	cvAbs(imgx, imgx);
+
+	cvSobel(img, imgy, 0, 1, 3);
+	cvAbs(imgy, imgy);
+
+	cvSub(imgx, imgy, imgx);
+	cvConvertScale(imgx, img);
+
+	//### Low pass filtering ###
+	cvSmooth(img, img, CV_GAUSSIAN, 7, 7, 0);
+
+	//### Applying Threshold ###
+	cvThreshold(img, thresh, 100, 255, CV_THRESH_BINARY);
+
+	cvErode(thresh, thresh, NULL, 2);
+	cvDilate(thresh, thresh, NULL, 5);
+
+	//### Contour finding with max. area ###
+	CvMemStorage* storage = cvCreateMemStorage(0);
+	CvSeq *pContour = NULL;
+	cvFindContours(thresh, storage, &pContour, sizeof(CvContour), CV_RETR_CCOMP, CV_CHAIN_APPROX_SIMPLE);
+	double area = 0;
+	CvSeq *bar = 0;
+	for (; pContour != NULL; pContour = pContour->h_next)  {
+		double max_area = cvContourArea(pContour);
+		if (max_area > area) {
+			area = max_area;
+			bar = pContour;
+		}
+	}
+
+	//### Draw bounding rectangles ###
+	if (!bar) //cannot find.
+		return;
+
+	CvRect bound_rect = cvBoundingRect(bar);
+	CvPoint pt1 = cvPoint(bound_rect.x, bound_rect.y);
+	CvPoint pt2 = cvPoint(bound_rect.x + bound_rect.width, bound_rect.y + bound_rect.height);
+	cvRectangle(imgco, pt1, pt2, CV_RGB(0, 255, 255), 2);
 }
 
 IplImage *rotate_image(IplImage *image, int _90_degrees_steps_anti_clockwise)
@@ -169,9 +228,13 @@ int _tmain(int argc, const char** argv)
 				matchLoc = minLoc;
 			else
 				matchLoc = maxLoc;
-			printf("patter maching min=%lf, max=%lf \n", minVal, maxVal);			
+			if (verbose)
+				printf("patter maching min=%lf, max=%lf \n", minVal, maxVal);
 			cvRectangle(frame, matchLoc, Point(matchLoc.x + cvGetSize(tracking).width, matchLoc.y + cvGetSize(tracking).height), CV_RGB(255, 0, 0), 1, 8, 0);
 		}
+
+		if (barcodeEnable)
+			detect_barcode(frame);
 			
 		//rotation
 		if (rotation_flag == 1) 
@@ -187,7 +250,8 @@ int _tmain(int argc, const char** argv)
 		++counter;
 		double sec = difftime(end, start);
 		double fps = counter / sec;
-		//printf("\n%lf", fps);
+		if (verbose)
+			printf("\n%lf", fps);
 	
 		char inKey = 0;
 		inKey = cvWaitKey(20);
@@ -196,9 +260,15 @@ int _tmain(int argc, const char** argv)
 
 		switch(inKey)
 		{
-		//transpose 90 degree
+		case 'b':
+		case 'B':
+			barcodeEnable = true;
+			if (verbose)
+				printf("Enable detect barcode\n");
+			break;
 		case 'g':
 		case 'G':
+			//transpose 90 degree
 			color_flag = !color_flag;
 			rectangle_on = false;
 			cvDestroyWindow("Tracking Image");
@@ -220,10 +290,14 @@ int _tmain(int argc, const char** argv)
 			rotation_flag = 0;
 			rectangle_on = false;
 			cvDestroyWindow("Tracking Image");
+		case 'v':
+		case 'V':
+			verbose = true;
 			break;
 
 		default:
-			printf("%c", inKey);
+			if (verbose)
+				printf("%c", inKey);
 			break;
 		}
 		i++;
