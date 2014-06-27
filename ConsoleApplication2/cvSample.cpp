@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <stdio.h>
+#include <time.h>
 
 using namespace std;
 using namespace cv;
@@ -120,13 +121,20 @@ int _tmain(int argc, const char** argv)
 	cvNamedWindow("Webcam", 1);
 	setMouseCallback("Webcam", onMouse, 0);
 
+	/*
 	CvVideoWriter *writer;
 	char AviFileName[] = "Output.avi";
 	int AviForamt = -1;
 	int FPS = 25;
-	//CvSize AviSize = cvSize(640, 480);
-	//int AviColor = 1;
-	//writer = cvCreateVideoWriter(AviFileName, AviForamt, FPS, AviSize, AviColor);
+	CvSize AviSize = cvSize(640, 480);
+	int AviColor = 1;
+	writer = cvCreateVideoWriter(AviFileName, AviForamt, FPS, AviSize, AviColor);
+	*/
+
+	//Start the clock
+	time_t start, end;
+	time(&start);
+	int counter = 0;
 
 	int i = 0;
 	while (true)
@@ -150,13 +158,19 @@ int _tmain(int argc, const char** argv)
 			}
 
 			IplImage *result = cvCreateImage(cvSize(cvGetSize(frame).width - cvGetSize(tracking).width + 1, cvGetSize(frame).height - cvGetSize(tracking).height + 1), 32, 1);
-			cvMatchTemplate(frame, tracking, result, CV_TM_SQDIFF);
+			int match_method = CV_TM_SQDIFF;
 
+			cvMatchTemplate(frame, tracking, result, match_method);
+			cvNormalize(result, result, 0, 1, NORM_MINMAX, NULL);
 			double minVal, maxVal;
-			CvPoint minLoc, maxLoc;
-			cvMinMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, 0);
-			printf("patter maching min=%lf, max=%lf \n", minVal, maxVal);
-			cvRectangle(frame, minLoc, maxLoc, CV_RGB(255, 0, 0), 1, 8, 0);
+			CvPoint minLoc, maxLoc, matchLoc;
+			cvMinMaxLoc(result, &minVal, &maxVal, &minLoc, &maxLoc, NULL);
+			if (match_method == CV_TM_SQDIFF || match_method == CV_TM_SQDIFF_NORMED) 
+				matchLoc = minLoc;
+			else
+				matchLoc = maxLoc;
+			printf("patter maching min=%lf, max=%lf \n", minVal, maxVal);			
+			cvRectangle(frame, matchLoc, Point(matchLoc.x + cvGetSize(tracking).width, matchLoc.y + cvGetSize(tracking).height), CV_RGB(255, 0, 0), 1, 8, 0);
 		}
 			
 		//rotation
@@ -168,8 +182,12 @@ int _tmain(int argc, const char** argv)
 			frame = rotate_image(frame, 3); //270
 
 		cvShowImage("Webcam", frame);
-		//printf("%d\n", i);
-
+		//Stop the clock and show FPS
+		time(&end);
+		++counter;
+		double sec = difftime(end, start);
+		double fps = counter / sec;
+		//printf("\n%lf", fps);
 	
 		char inKey = 0;
 		inKey = cvWaitKey(20);
@@ -182,6 +200,8 @@ int _tmain(int argc, const char** argv)
 		case 'g':
 		case 'G':
 			color_flag = !color_flag;
+			rectangle_on = false;
+			cvDestroyWindow("Tracking Image");
 			break;
 		case 't':
 		case 'T':
@@ -198,9 +218,12 @@ int _tmain(int argc, const char** argv)
 		case 'n':
 		case 'N':
 			rotation_flag = 0;
+			rectangle_on = false;
+			cvDestroyWindow("Tracking Image");
 			break;
 
 		default:
+			printf("%c", inKey);
 			break;
 		}
 		i++;
