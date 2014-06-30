@@ -103,21 +103,37 @@ void detect_barcode(IplImage* imgco)
 	IplImage* imgy = cvCreateImage(cvGetSize(img), IPL_DEPTH_16S, 1);
 	IplImage* thresh = cvCreateImage(cvGetSize(img), 8, 1);
 
-	//### Convert image to grayscale ###
+	IplImage* img2 = cvCreateImage(cvGetSize(imgco), 8, 1);
+	IplImage* img3 = cvCreateImage(cvGetSize(imgco), 8, 1);
+
+	//### Convert image to gray ###
 	cvCvtColor(imgco, img, CV_BGR2GRAY);
 
 	//### Finding horizontal and vertical gradient ###
-	cvSobel(img, imgx, 1, 0, 3);
+	//When img is 8s, dst must be 16s because Sobel result has negtive value. 
+	cvSobel(img, imgx, 1, 0, 3); //find horizontal gradient (x,0,3)
 	cvAbs(imgx, imgx);
+	cvConvertScale(imgx, img2);
+	//cvShowImage("x-axi", img2);
 
-	cvSobel(img, imgy, 0, 1, 3);
+	cvSobel(img, imgy, 0, 1, 3); //find vertical gradient (0,y,3)
 	cvAbs(imgy, imgy);
+	cvConvertScale(imgx, img3);
+	//cvShowImage("y-axi", img3);
 
+	//Using sub to remove some border which we don't need.
 	cvSub(imgx, imgy, imgx);
 	cvConvertScale(imgx, img);
+	//cvShowImage("x-y img", img);
 
-	//### Low pass filtering ###
+	//### Low pass filtering using GAUSSIAN Blur ###
+	/*
+	*   Try to blur it, parameter more big, the image become more blur.
+	*   More blur image helps us to find Contour for barcode. 
+	*   cvSmooth(img, img, CV_GAUSSIAN, 7, 7, 0) > cvSmooth(img, img, CV_GAUSSIAN, 3, 3, 0)
+	*/
 	cvSmooth(img, img, CV_GAUSSIAN, 7, 7, 0);
+	//cvShowImage("7X7 CV_GAUSSIAN", img);
 
 	//### Applying Threshold ###
 	cvThreshold(img, thresh, 100, 255, CV_THRESH_BINARY);
@@ -141,12 +157,33 @@ void detect_barcode(IplImage* imgco)
 
 	//### Draw bounding rectangles ###
 	if (!bar) //cannot find.
+	{
+		//Release memory
+		cvReleaseImage(&img);
+		cvReleaseImage(&imgx);
+		cvReleaseImage(&imgy);
+		cvReleaseImage(&thresh);
+		cvReleaseImage(&img2);
+		cvReleaseImage(&img3);
+		cvClearMemStorage(storage);
+		cvReleaseMemStorage(&storage);
 		return;
+	}
 
 	CvRect bound_rect = cvBoundingRect(bar);
 	CvPoint pt1 = cvPoint(bound_rect.x, bound_rect.y);
 	CvPoint pt2 = cvPoint(bound_rect.x + bound_rect.width, bound_rect.y + bound_rect.height);
 	cvRectangle(imgco, pt1, pt2, CV_RGB(0, 255, 255), 2);
+
+	//Release memory
+	cvReleaseImage(&img);
+	cvReleaseImage(&imgx);
+	cvReleaseImage(&imgy);
+	cvReleaseImage(&thresh);
+	cvReleaseImage(&img2);
+	cvReleaseImage(&img3);
+	cvClearMemStorage(storage);
+	cvReleaseMemStorage(&storage);
 }
 
 IplImage *rotate_image(IplImage *image, int _90_degrees_steps_anti_clockwise)
@@ -231,6 +268,7 @@ int _tmain(int argc, const char** argv)
 			if (verbose)
 				printf("patter maching min=%lf, max=%lf \n", minVal, maxVal);
 			cvRectangle(frame, matchLoc, Point(matchLoc.x + cvGetSize(tracking).width, matchLoc.y + cvGetSize(tracking).height), CV_RGB(255, 0, 0), 1, 8, 0);
+			cvReleaseImage(&result);
 		}
 
 		if (barcodeEnable)
@@ -262,7 +300,7 @@ int _tmain(int argc, const char** argv)
 		{
 		case 'b':
 		case 'B':
-			barcodeEnable = true;
+			barcodeEnable = !barcodeEnable;
 			if (verbose)
 				printf("Enable detect barcode\n");
 			break;
@@ -292,7 +330,7 @@ int _tmain(int argc, const char** argv)
 			cvDestroyWindow("Tracking Image");
 		case 'v':
 		case 'V':
-			verbose = true;
+			verbose = !verbose;
 			break;
 
 		default:
